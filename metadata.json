@@ -1,0 +1,6 @@
+{
+  "name": "Lumina Cosmetics POS",
+  "description": "100% offline desktop Point of Sale web application for a cosmetics shop with barcode scanning, IndexedDB persistence, IQD checkout, thermal receipt printing, and sales history.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

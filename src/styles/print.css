@@ -1,0 +1,36 @@
+/* Thermal & Desktop Print Stylesheet */
+#receipt-print-root {
+  display: none;
+}
+
+@media print {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+
+  #root {
+    display: none !important;
+  }
+
+  #receipt-print-root {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+
+  .receipt-paper {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 auto !important;
+    padding: 4mm 3mm !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
