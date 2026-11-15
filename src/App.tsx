@@ -9,7 +9,9 @@ import { CashierPage } from './pages/CashierPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { SalesHistoryPage } from './pages/SalesHistoryPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { StatisticsPage } from './pages/StatisticsPage';
 import { ReceiptPreview } from './components/ReceiptPreview';
+import { StaffLoginScreen } from './components/StaffLoginScreen';
 
 function getOrCreatePrintRoot(): HTMLElement {
   let el = document.getElementById('receipt-print-root');
@@ -22,12 +24,16 @@ function getOrCreatePrintRoot(): HTMLElement {
 }
 
 function AppRoutesAndPrintPortal() {
-  const { printReceipt } = usePos();
+  const { activeStaff, printReceipt } = usePos();
   const [printRoot, setPrintRoot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     setPrintRoot(getOrCreatePrintRoot());
   }, []);
+
+  if (!activeStaff) {
+    return <StaffLoginScreen />;
+  }
 
   return (
     <>
@@ -38,6 +44,7 @@ function AppRoutesAndPrintPortal() {
             <Route path="products" element={<ProductsPage />} />
             <Route path="history" element={<SalesHistoryPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="statistics" element={<StatisticsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

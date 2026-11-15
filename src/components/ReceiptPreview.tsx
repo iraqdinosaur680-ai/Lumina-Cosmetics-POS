@@ -21,6 +21,8 @@ const LABELS: Record<
     product: string;
     qty: string;
     price: string;
+    subtotal: string;
+    discount: string;
     total: string;
     itemsCount: string;
   }
@@ -31,6 +33,8 @@ const LABELS: Record<
     product: 'Product',
     qty: 'Qty',
     price: 'Price',
+    subtotal: 'Subtotal:',
+    discount: 'Discount:',
     total: 'TOTAL:',
     itemsCount: 'Items:',
   },
@@ -40,6 +44,8 @@ const LABELS: Record<
     product: 'المنتج',
     qty: 'الكمية',
     price: 'السعر',
+    subtotal: 'المجموع الفرعي:',
+    discount: 'الخصم:',
     total: 'المجموع:',
     itemsCount: 'القطع:',
   },
@@ -49,6 +55,8 @@ const LABELS: Record<
     product: 'Product / المنتج',
     qty: 'Qty',
     price: 'Price / السعر',
+    subtotal: 'Subtotal / الفرعي:',
+    discount: 'Discount / الخصم:',
     total: 'TOTAL / المجموع:',
     itemsCount: 'Items / القطع:',
   },
@@ -66,6 +74,7 @@ export const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
   const isNarrow = width === '58mm';
 
   const totalUnits = receipt.items.reduce((sum, item) => sum + item.quantity, 0);
+  const hasDiscount = (receipt.discountAmount ?? 0) > 0;
   const formattedTime = (() => {
     const d = new Date(receipt.saleDate);
     if (Number.isNaN(d.getTime())) return '';
@@ -144,12 +153,24 @@ export const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
         })}
       </div>
 
-      {/* Totals */}
+      {/* Totals (Never includes buying cost or internal profit) */}
       <div className="py-2.5 space-y-1 border-b border-dashed border-black/50 tabular-nums">
         <div className="flex items-center justify-between text-[11px]">
           <span>{labels.itemsCount}</span>
           <span>{totalUnits}</span>
         </div>
+        {hasDiscount && receipt.subtotalAmount !== undefined && (
+          <>
+            <div className="flex items-center justify-between text-[11px]">
+              <span>{labels.subtotal}</span>
+              <span>{formatCurrency(receipt.subtotalAmount, receipt.settings.currency)}</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span>{labels.discount}</span>
+              <span>-{formatCurrency(receipt.discountAmount ?? 0, receipt.settings.currency)}</span>
+            </div>
+          </>
+        )}
         <div
           className={`flex items-center justify-between font-bold pt-1 ${
             isNarrow ? 'text-[14px]' : 'text-[16px]'

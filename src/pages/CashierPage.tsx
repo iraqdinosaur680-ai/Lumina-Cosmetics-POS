@@ -3,7 +3,10 @@ import {
   AlertCircle,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Eye,
+  EyeOff,
   Minus,
   PackagePlus,
   Pencil,
@@ -38,7 +41,12 @@ export const CashierPage: React.FC = () => {
     cart,
     totalItems,
     subtotal,
+    finalTotalOverride,
+    setFinalTotalOverride,
+    discountAmount,
     finalAmount,
+    totalBuyingCost,
+    estimatedProfit,
     feedback,
     setFeedback,
     lastCompletedSale,
@@ -49,6 +57,7 @@ export const CashierPage: React.FC = () => {
     openRegisterModal,
     closeRegisterModal,
     addProductToCart,
+    addCustomItemToCart,
     updateQuantity,
     updateItemPrice,
     removeCartItem,
@@ -68,6 +77,14 @@ export const CashierPage: React.FC = () => {
   const [editingPriceValue, setEditingPriceValue] = useState<number | null>(null);
   const [previewReceipt, setPreviewReceipt] = useState<ReceiptData | null>(null);
   const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
+  const [showPrivateDetails, setShowPrivateDetails] = useState(false);
+
+  // Quick / Unregistered item modal state
+  const [quickItemOpen, setQuickItemOpen] = useState(false);
+  const [quickItemName, setQuickItemName] = useState('');
+  const [quickItemPrice, setQuickItemPrice] = useState<number | null>(null);
+  const [quickItemQty, setQuickItemQty] = useState(1);
+  const [quickItemBarcode, setQuickItemBarcode] = useState<string | undefined>(undefined);
 
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const quickSearchInputRef = useRef<HTMLInputElement>(null);
@@ -78,7 +95,11 @@ export const CashierPage: React.FC = () => {
   );
 
   const isAnyModalOpen =
-    registerModalOpen || !!previewReceipt || clearCartConfirmOpen || editingPriceBarcode !== null;
+    registerModalOpen ||
+    quickItemOpen ||
+    !!previewReceipt ||
+    clearCartConfirmOpen ||
+    editingPriceBarcode !== null;
 
   const focusScanner = useCallback(() => {
     if (isAnyModalOpen) return;
@@ -93,6 +114,13 @@ export const CashierPage: React.FC = () => {
       focusScanner();
     }
   }, [isAnyModalOpen, focusScanner]);
+
+  // Collapse private cost/discount drawer when cart empties
+  useEffect(() => {
+    if (cart.length === 0) {
+      setShowPrivateDetails(false);
+    }
+  }, [cart.length]);
 
   // F2 focuses scanner input anytime on CashierPage
   useEffect(() => {
@@ -140,6 +168,35 @@ export const CashierPage: React.FC = () => {
     }
     setEditingPriceBarcode(null);
     setEditingPriceValue(null);
+    focusScanner();
+  };
+
+  const openQuickItemModal = (prefillBarcode?: string) => {
+    setQuickItemBarcode(prefillBarcode);
+    setQuickItemName(prefillBarcode ? `${t.cashier.quickItemDefaultName} (${prefillBarcode})` : '');
+    setQuickItemPrice(null);
+    setQuickItemQty(1);
+    setQuickItemOpen(true);
+  };
+
+  const submitQuickItem = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (quickItemPrice === null || !Number.isFinite(quickItemPrice) || quickItemPrice < 0) return;
+    const itemName = quickItemName.trim() || t.cashier.quickItemDefaultName;
+    addCustomItemToCart({
+      name: itemName,
+      unitPrice: quickItemPrice,
+      quantity: quickItemQty,
+      barcode: quickItemBarcode,
+    });
+    setFeedback({
+      type: 'success',
+      message: interpolate(t.cashier.addedMsg, {
+        name: itemName,
+        price: formatCurrency(quickItemPrice, settings.currency),
+      }),
+    });
+    setQuickItemOpen(false);
     focusScanner();
   };
 
@@ -266,14 +323,24 @@ export const CashierPage: React.FC = () => {
 
                 <div className="flex items-center gap-2 shrink-0">
                   {feedback.type === 'unknown' && feedback.unknownBarcode && (
-                    <button
-                      type="button"
-                      onClick={() => openRegisterModal(feedback.unknownBarcode ?? '')}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#9D174D] rounded-md hover:bg-[#831843] transition-colors whitespace-nowrap"
-                    >
-                      <PackagePlus className="w-3.5 h-3.5" />
-                      {t.cashier.registerProductBtn}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openQuickItemModal(feedback.unknownBarcode)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-950 bg-white border border-amber-300 rounded-md hover:bg-amber-100 transition-colors whitespace-nowrap"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        {t.cashier.sellWithoutSavingBtn}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openRegisterModal(feedback.unknownBarcode ?? '')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#9D174D] rounded-md hover:bg-[#831843] transition-colors whitespace-nowrap"
+                      >
+                        <PackagePlus className="w-3.5 h-3.5" />
+                        {t.cashier.registerProductBtn}
+                      </button>
+                    </>
                   )}
                   <button
                     type="button"
@@ -382,15 +449,25 @@ export const CashierPage: React.FC = () => {
                 </span>
               </div>
 
-              {cart.length > 0 && (
+              <div className="flex items-center gap-3 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setClearCartConfirmOpen(true)}
-                  className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline whitespace-nowrap shrink-0"
+                  onClick={() => openQuickItemModal()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors whitespace-nowrap"
                 >
-                  {t.cashier.clearCart}
+                  <Plus className="w-3.5 h-3.5 text-[#9D174D]" />
+                  <span>{t.cashier.quickItemBtn}</span>
                 </button>
-              )}
+                {cart.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setClearCartConfirmOpen(true)}
+                    className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline whitespace-nowrap shrink-0"
+                  >
+                    {t.cashier.clearCart}
+                  </button>
+                )}
+              </div>
             </div>
 
             {cart.length === 0 ? (
@@ -400,6 +477,15 @@ export const CashierPage: React.FC = () => {
                 </div>
                 <p className="text-sm font-medium text-slate-900">{t.cashier.readyTitle}</p>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm">{t.cashier.readySubtitle}</p>
+
+                <button
+                  type="button"
+                  onClick={() => openQuickItemModal()}
+                  className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#9D174D] bg-[#9D174D]/5 border border-[#9D174D]/25 rounded-lg hover:bg-[#9D174D]/10 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{t.cashier.quickItemBtn}</span>
+                </button>
 
                 {lastCompletedSale && (
                   <div className="mt-5 px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center gap-4">
@@ -467,7 +553,9 @@ export const CashierPage: React.FC = () => {
                                   {item.name}
                                 </div>
                                 <div className="text-xs text-slate-500 font-mono tabular-nums">
-                                  {item.barcode}
+                                  {item.productId === undefined && item.barcode.startsWith('ADHOC-')
+                                    ? t.cashier.unregisteredLabel
+                                    : item.barcode}
                                 </div>
                               </div>
                             </div>
@@ -616,17 +704,118 @@ export const CashierPage: React.FC = () => {
                     {formatCurrency(subtotal, settings.currency)}
                   </span>
                 </div>
+                {discountAmount > 0 && (
+                  <div className="flex items-center justify-between text-emerald-700">
+                    <span>{t.cashier.discountLabel}</span>
+                    <span dir="ltr" className="font-mono font-semibold">
+                      -{formatCurrency(discountAmount, settings.currency)}
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* Prominent Final Total */}
-              <div className="p-5 rounded-xl bg-slate-900 text-white">
-                <div className="text-xs font-medium text-slate-300">{t.cashier.finalTotal}</div>
-                <div
-                  dir="ltr"
-                  className="mt-1.5 text-3xl font-bold font-mono tabular-nums tracking-tight text-start"
+              {/* Interactive Final Total Box (Click to reveal private buying cost, profit & discount edit — NEVER printed) */}
+              <div className="rounded-xl bg-slate-900 text-white overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowPrivateDetails((prev) => !prev)}
+                  className="w-full p-5 text-start hover:bg-slate-800/70 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#9D174D]"
                 >
-                  {formatCurrency(finalAmount, settings.currency)}
-                </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-slate-300">
+                      {t.cashier.finalTotal}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 whitespace-nowrap">
+                      <span>{t.cashier.tapFinalTotalHint}</span>
+                      {showPrivateDetails ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
+                    </span>
+                  </div>
+                  <div
+                    dir="ltr"
+                    className="mt-1.5 text-3xl font-bold font-mono tabular-nums tracking-tight text-start"
+                  >
+                    {formatCurrency(finalAmount, settings.currency)}
+                  </div>
+                </button>
+
+                {showPrivateDetails && (
+                  <div className="px-5 pb-5 pt-4 bg-slate-800/80 border-t border-slate-700/80 space-y-3.5">
+                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-amber-300">
+                      <EyeOff className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t.cashier.privateOnlyNotice}</span>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs tabular-nums">
+                      <div className="flex items-center justify-between text-slate-300">
+                        <span>{t.cashier.totalBuyingPay}</span>
+                        <span dir="ltr" className="font-mono font-semibold text-white">
+                          {formatCurrency(totalBuyingCost, settings.currency)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-300">
+                        <span>{t.cashier.totalSellingPrice}</span>
+                        <span dir="ltr" className="font-mono font-semibold text-white">
+                          {formatCurrency(finalAmount, settings.currency)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-700">
+                        <span className="font-semibold text-slate-200">
+                          {t.cashier.netProfitGetting}
+                        </span>
+                        <span
+                          dir="ltr"
+                          className={`font-mono font-bold text-sm ${
+                            estimatedProfit >= 0 ? 'text-emerald-400' : 'text-red-400'
+                          }`}
+                        >
+                          {formatCurrency(estimatedProfit, settings.currency)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Discount / Custom Final Price Editor */}
+                    <div className="pt-2.5 border-t border-slate-700 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label
+                          htmlFor="cashier-discount-override"
+                          className="text-xs font-medium text-slate-200"
+                        >
+                          {t.cashier.editFinalTotalLabel}
+                        </label>
+                        {finalTotalOverride !== null && finalTotalOverride !== subtotal && (
+                          <button
+                            type="button"
+                            onClick={() => setFinalTotalOverride(null)}
+                            className="text-[11px] font-medium text-amber-300 hover:underline whitespace-nowrap"
+                          >
+                            {t.cashier.resetToSubtotal}
+                          </button>
+                        )}
+                      </div>
+                      <div className="bg-white text-slate-900 rounded-lg p-2">
+                        <IqdPriceInput
+                          id="cashier-discount-override"
+                          value={finalAmount}
+                          onChange={(nextVal) => {
+                            if (nextVal === null) {
+                              setFinalTotalOverride(0);
+                            } else {
+                              setFinalTotalOverride(nextVal);
+                            }
+                          }}
+                          onEscape={() => {
+                            setShowPrivateDetails(false);
+                            focusScanner();
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -710,6 +899,124 @@ export const CashierPage: React.FC = () => {
           focusScanner();
         }}
       />
+
+      {/* Quick / Unregistered Item Sale Modal */}
+      {quickItemOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-[1px] p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="quick-item-modal-title"
+        >
+          <div className="bg-white border border-slate-200 rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <div>
+                <h2 id="quick-item-modal-title" className="text-base font-semibold text-slate-900">
+                  {t.cashier.quickItemModalTitle}
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">{t.cashier.quickItemModalSubtitle}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickItemOpen(false);
+                  focusScanner();
+                }}
+                className="p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                aria-label={t.common.close}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={submitQuickItem} className="p-6 space-y-4">
+              <div>
+                <label
+                  htmlFor="quick-item-price"
+                  className="block text-sm font-medium text-slate-700 mb-1.5"
+                >
+                  {t.cashier.quickItemPriceLabel} <span className="text-red-600">*</span>
+                </label>
+                <IqdPriceInput
+                  id="quick-item-price"
+                  autoFocus
+                  value={quickItemPrice}
+                  onChange={setQuickItemPrice}
+                  placeholder="15,000"
+                  onEnter={() => submitQuickItem()}
+                  onEscape={() => {
+                    setQuickItemOpen(false);
+                    focusScanner();
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label
+                    htmlFor="quick-item-name"
+                    className="block text-xs font-medium text-slate-700 mb-1"
+                  >
+                    {t.cashier.quickItemNameLabel}{' '}
+                    <span className="text-slate-400 font-normal">({t.common.optional})</span>
+                  </label>
+                  <input
+                    id="quick-item-name"
+                    dir="auto"
+                    type="text"
+                    value={quickItemName}
+                    onChange={(e) => setQuickItemName(e.target.value)}
+                    placeholder={t.cashier.quickItemNamePlaceholder}
+                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="quick-item-qty"
+                    className="block text-xs font-medium text-slate-700 mb-1"
+                  >
+                    {t.cashier.quickItemQtyLabel}
+                  </label>
+                  <input
+                    id="quick-item-qty"
+                    dir="ltr"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={quickItemQty}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      setQuickItemQty(Number.isNaN(v) || v < 1 ? 1 : v);
+                    }}
+                    className="w-full px-3 py-2 text-sm font-mono tabular-nums text-center bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickItemOpen(false);
+                    focusScanner();
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+                >
+                  {t.common.cancel}
+                </button>
+                <button
+                  type="submit"
+                  disabled={quickItemPrice === null || quickItemPrice < 0}
+                  className="px-5 py-2 text-sm font-semibold text-white bg-[#9D174D] rounded-lg hover:bg-[#831843] disabled:bg-slate-200 disabled:text-slate-400 transition-colors"
+                >
+                  {t.cashier.quickItemAddBtn}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

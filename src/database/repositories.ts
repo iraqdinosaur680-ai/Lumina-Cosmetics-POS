@@ -3,12 +3,35 @@ import type {
   AppSettings,
   CartItem,
   DatabaseBackup,
+  Expense,
   Product,
   Sale,
   SaleItem,
   SaleWithItems,
+  StaffProfile,
 } from '../types/pos';
 import { formatReceiptNumber } from '../services/barcodeService';
+
+export const DEFAULT_REORDER_POINT = 5;
+
+export function getEffectiveReorderPoint(product: Pick<Product, 'reorderPoint'>): number {
+  return product.reorderPoint !== undefined && Number.isFinite(product.reorderPoint)
+    ? Math.max(0, Math.round(product.reorderPoint))
+    : DEFAULT_REORDER_POINT;
+}
+
+export function isProductBelowReorderPoint(
+  product: Pick<Product, 'stock' | 'reorderPoint'>
+): boolean {
+  if (product.stock === undefined || !Number.isFinite(product.stock)) {
+    return false;
+  }
+  const threshold = getEffectiveReorderPoint(product);
+  if (product.reorderPoint !== undefined) {
+    return product.stock < threshold || product.stock <= 0;
+  }
+  return product.stock <= threshold;
+}
 
 export const productRepo = {
   async getAll(): Promise<Product[]> {
@@ -53,6 +76,18 @@ export const productRepo = {
       name: input.name.trim(),
       barcode: cleanBarcode,
       price: Math.max(0, Math.round(input.price)),
+      buyingPrice:
+        input.buyingPrice !== undefined && Number.isFinite(input.buyingPrice)
+          ? Math.max(0, Math.round(input.buyingPrice))
+          : undefined,
+      stock:
+        input.stock !== undefined && Number.isFinite(input.stock)
+          ? Math.max(0, Math.round(input.stock))
+          : undefined,
+      reorderPoint:
+        input.reorderPoint !== undefined && Number.isFinite(input.reorderPoint)
+          ? Math.max(0, Math.round(input.reorderPoint))
+          : undefined,
       category: input.category.trim() || 'Other',
       image: input.image,
       createdAt: now,
@@ -83,11 +118,35 @@ export const productRepo = {
       }
     }
 
+    const nextBuyingPrice =
+      'buyingPrice' in updates
+        ? updates.buyingPrice !== undefined && Number.isFinite(updates.buyingPrice)
+          ? Math.max(0, Math.round(updates.buyingPrice))
+          : undefined
+        : current.buyingPrice;
+
+    const nextStock =
+      'stock' in updates
+        ? updates.stock !== undefined && Number.isFinite(updates.stock)
+          ? Math.max(0, Math.round(updates.stock))
+          : undefined
+        : current.stock;
+
+    const nextReorderPoint =
+      'reorderPoint' in updates
+        ? updates.reorderPoint !== undefined && Number.isFinite(updates.reorderPoint)
+          ? Math.max(0, Math.round(updates.reorderPoint))
+          : undefined
+        : current.reorderPoint;
+
     const updated: Product = {
       ...current,
       name: updates.name !== undefined ? updates.name.trim() : current.name,
       barcode: nextBarcode,
       price: updates.price !== undefined ? Math.max(0, Math.round(updates.price)) : current.price,
+      buyingPrice: nextBuyingPrice,
+      stock: nextStock,
+      reorderPoint: nextReorderPoint,
       category: updates.category !== undefined ? updates.category.trim() || 'Other' : current.category,
       image: updates.image !== undefined ? updates.image : current.image,
       updatedAt: new Date().toISOString(),
@@ -103,14 +162,14 @@ export const productRepo = {
 
   async seedSampleCatalog(): Promise<number> {
     const samples: Array<Omit<Product, 'id' | 'createdAt' | 'updatedAt'>> = [
-      { name: 'Velvet Matte Lipstick - Rose Noir', barcode: '6281001100014', price: 18000, category: 'Makeup' },
-      { name: 'Hyaluronic Hydrating Serum 30ml', barcode: '6281001100021', price: 28000, category: 'Skincare' },
-      { name: 'Botanical Rosewater Mist 150ml', barcode: '6281001100038', price: 15000, category: 'Skincare' },
-      { name: 'Oud & Amber Eau de Parfum 50ml', barcode: '6281001100045', price: 65000, category: 'Fragrance' },
-      { name: 'Silk Lash Volume Mascara', barcode: '6281001100052', price: 14500, category: 'Makeup' },
-      { name: 'Argan Repair Hair Elixir 100ml', barcode: '6281001100069', price: 22000, category: 'Haircare' },
-      { name: 'Shea & Vanilla Body Butter 200g', barcode: '6281001100076', price: 19500, category: 'Body Care' },
-      { name: 'سيروم فيتامين سي للوجه', barcode: '6281001100083', price: 24000, category: 'Skincare' },
+      { name: 'Velvet Matte Lipstick - Rose Noir', barcode: '6281001100014', price: 18000, buyingPrice: 11000, stock: 24, category: 'Makeup' },
+      { name: 'Hyaluronic Hydrating Serum 30ml', barcode: '6281001100021', price: 28000, buyingPrice: 18500, stock: 16, category: 'Skincare' },
+      { name: 'Botanical Rosewater Mist 150ml', barcode: '6281001100038', price: 15000, buyingPrice: 9000, stock: 20, category: 'Skincare' },
+      { name: 'Oud & Amber Eau de Parfum 50ml', barcode: '6281001100045', price: 65000, buyingPrice: 42000, stock: 8, category: 'Fragrance' },
+      { name: 'Silk Lash Volume Mascara', barcode: '6281001100052', price: 14500, buyingPrice: 8500, stock: 30, category: 'Makeup' },
+      { name: 'Argan Repair Hair Elixir 100ml', barcode: '6281001100069', price: 22000, buyingPrice: 13500, stock: 14, category: 'Haircare' },
+      { name: 'Shea & Vanilla Body Butter 200g', barcode: '6281001100076', price: 19500, buyingPrice: 12000, stock: 18, category: 'Body Care' },
+      { name: 'سيروم فيتامين سي للوجه', barcode: '6281001100083', price: 24000, buyingPrice: 15000, stock: 22, category: 'Skincare' },
     ];
 
     let added = 0;
@@ -130,14 +189,21 @@ export const productRepo = {
 
 export const salesRepo = {
   /**
-   * Persist completed sale and immutable item snapshots inside an atomic IndexedDB transaction.
+   * Persist completed sale, immutable item snapshots, staff attribution, and stock decrements
+   * inside an atomic IndexedDB transaction.
    */
-  async createSaleTransaction(cartItems: CartItem[]): Promise<SaleWithItems> {
+  async createSaleTransaction(
+    cartItems: CartItem[],
+    options?: {
+      finalTotalOverride?: number | null;
+      staff?: StaffProfile | null;
+    }
+  ): Promise<SaleWithItems> {
     if (cartItems.length === 0) {
       throw new Error('Cannot checkout an empty cart.');
     }
 
-    return db.transaction('rw', db.sales, db.saleItems, async () => {
+    return db.transaction('rw', db.sales, db.saleItems, db.products, async () => {
       const lastSale = await db.sales.orderBy('id').last();
       let nextSeq = 1;
       if (lastSale) {
@@ -156,34 +222,71 @@ export const salesRepo = {
       }
 
       const saleDate = new Date().toISOString();
-      const totalAmount = cartItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      const subtotalAmount = Math.round(
+        cartItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
+      );
+      const finalAmount =
+        options?.finalTotalOverride !== undefined && options?.finalTotalOverride !== null
+          ? Math.max(0, Math.round(options.finalTotalOverride))
+          : subtotalAmount;
+      const discountAmount = Math.max(0, subtotalAmount - finalAmount);
+
+      let totalCost = 0;
+      const itemRecords: SaleItem[] = [];
 
       const saleRecord: Omit<Sale, 'id'> = {
         receiptNumber,
-        totalAmount: Math.round(totalAmount),
+        subtotalAmount,
+        discountAmount,
+        totalAmount: finalAmount,
+        totalCost: 0,
+        staffId: options?.staff?.id,
+        staffNameSnapshot: options?.staff?.name,
         saleDate,
       };
 
       const saleId = await db.sales.add(saleRecord);
 
-      const itemRecords: SaleItem[] = [];
       for (const item of cartItems) {
-        const subtotal = Math.round(item.unitPrice * item.quantity);
+        const dbProduct =
+          item.productId !== undefined
+            ? await db.products.get(item.productId)
+            : await db.products.where('barcode').equals(item.barcode).first();
+
+        const unitBuyingPrice = item.buyingPrice ?? dbProduct?.buyingPrice;
+        if (unitBuyingPrice !== undefined) {
+          totalCost += unitBuyingPrice * item.quantity;
+        }
+
+        // Decrement stock if tracked on this product
+        if (dbProduct && dbProduct.id !== undefined && dbProduct.stock !== undefined) {
+          const nextStock = Math.max(0, dbProduct.stock - item.quantity);
+          await db.products.update(dbProduct.id, {
+            stock: nextStock,
+            updatedAt: saleDate,
+          });
+        }
+
+        const lineSubtotal = Math.round(item.unitPrice * item.quantity);
         const record: Omit<SaleItem, 'id'> = {
           saleId,
-          productId: item.productId,
+          productId: item.productId ?? dbProduct?.id,
           productNameSnapshot: item.name,
           barcodeSnapshot: item.barcode,
           unitPriceSnapshot: Math.round(item.unitPrice),
+          buyingPriceSnapshot: unitBuyingPrice,
           quantity: item.quantity,
-          subtotal,
+          subtotal: lineSubtotal,
         };
         const itemId = await db.saleItems.add(record);
         itemRecords.push({ ...record, id: itemId });
       }
 
+      const roundedCost = Math.round(totalCost);
+      await db.sales.update(saleId, { totalCost: roundedCost });
+
       return {
-        sale: { ...saleRecord, id: saleId },
+        sale: { ...saleRecord, totalCost: roundedCost, id: saleId },
         items: itemRecords,
       };
     });
@@ -216,6 +319,35 @@ export const salesRepo = {
   },
 };
 
+export const expenseRepo = {
+  async getAll(): Promise<Expense[]> {
+    return db.expenses.orderBy('date').reverse().toArray();
+  },
+
+  async create(input: Omit<Expense, 'id' | 'createdAt'>): Promise<Expense> {
+    const cleanTitle = input.title.trim();
+    if (!cleanTitle) {
+      throw new Error('Expense title is required.');
+    }
+    const record: Omit<Expense, 'id'> = {
+      title: cleanTitle,
+      amount: Math.max(0, Math.round(input.amount)),
+      category: input.category.trim() || 'Other',
+      note: input.note?.trim() || undefined,
+      date: input.date || new Date().toISOString(),
+      staffId: input.staffId,
+      staffNameSnapshot: input.staffNameSnapshot,
+      createdAt: new Date().toISOString(),
+    };
+    const id = await db.expenses.add(record);
+    return { ...record, id };
+  },
+
+  async remove(id: number): Promise<void> {
+    await db.expenses.delete(id);
+  },
+};
+
 export const settingsRepo = {
   async getSettings(): Promise<AppSettings> {
     return ensureDefaultSettings();
@@ -230,29 +362,41 @@ export const settingsRepo = {
       shopName: (updates.shopName ?? current.shopName).trim() || DEFAULT_SETTINGS.shopName,
       currency: (updates.currency ?? current.currency).trim() || 'IQD',
       receiptFooter: updates.receiptFooter ?? current.receiptFooter,
+      staffProfiles: updates.staffProfiles ?? current.staffProfiles,
     };
     await db.settings.put(next);
     return next;
+  },
+
+  async updateStaffName(id: '1' | '2' | '3', name: string): Promise<AppSettings> {
+    const current = await ensureDefaultSettings();
+    const cleanName = name.trim() || `Cashier ${id}`;
+    const updatedProfiles = current.staffProfiles.map((p) =>
+      p.id === id ? { ...p, name: cleanName } : p
+    );
+    return this.updateSettings({ staffProfiles: updatedProfiles });
   },
 };
 
 export const backupRepo = {
   async exportAllData(): Promise<DatabaseBackup> {
-    const [products, sales, saleItems, settings] = await Promise.all([
+    const [products, sales, saleItems, expenses, settings] = await Promise.all([
       db.products.toArray(),
       db.sales.toArray(),
       db.saleItems.toArray(),
+      db.expenses.toArray(),
       db.settings.toArray(),
     ]);
 
     return {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       app: 'Lumina Cosmetics POS',
       data: {
         products,
         sales,
         saleItems,
+        expenses,
         settings: settings.length > 0 ? settings : [DEFAULT_SETTINGS],
       },
     };
@@ -266,12 +410,13 @@ export const backupRepo = {
       throw new Error('Invalid backup file structure.');
     }
 
-    await db.transaction('rw', db.products, db.sales, db.saleItems, db.settings, async () => {
+    await db.transaction('rw', db.products, db.sales, db.saleItems, db.expenses, db.settings, async () => {
       if (mode === 'replace') {
         await Promise.all([
           db.products.clear(),
           db.sales.clear(),
           db.saleItems.clear(),
+          db.expenses.clear(),
           db.settings.clear(),
         ]);
 
@@ -283,6 +428,9 @@ export const backupRepo = {
         }
         if (Array.isArray(backup.data.saleItems) && backup.data.saleItems.length > 0) {
           await db.saleItems.bulkPut(backup.data.saleItems);
+        }
+        if (Array.isArray(backup.data.expenses) && backup.data.expenses.length > 0) {
+          await db.expenses.bulkPut(backup.data.expenses);
         }
         if (Array.isArray(backup.data.settings) && backup.data.settings.length > 0) {
           await db.settings.put({ ...DEFAULT_SETTINGS, ...backup.data.settings[0], id: 1 });
@@ -308,6 +456,12 @@ export const backupRepo = {
               const { id: _itemId, saleId: _oldSaleId, ...itemRest } = item;
               await db.saleItems.add({ ...itemRest, saleId: newSaleId });
             }
+          }
+        }
+        if (Array.isArray(backup.data.expenses)) {
+          for (const exp of backup.data.expenses) {
+            const { id: _ignored, ...expRest } = exp;
+            await db.expenses.add(expRest);
           }
         }
       }

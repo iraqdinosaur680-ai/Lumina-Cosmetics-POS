@@ -4,13 +4,21 @@ export type ReceiptWidth = '58mm' | '80mm';
 
 export type ReceiptLanguage = 'en' | 'ar' | 'bilingual';
 
-export type DateFilterPreset = 'today' | 'yesterday' | 'week' | 'all' | 'custom';
+export type DateFilterPreset = 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom';
+
+export interface StaffProfile {
+  id: '1' | '2' | '3';
+  name: string;
+}
 
 export interface Product {
   id?: number;
   name: string;
   barcode: string;
   price: number;
+  buyingPrice?: number;
+  stock?: number;
+  reorderPoint?: number;
   category: string;
   image?: string;
   createdAt: string;
@@ -20,7 +28,12 @@ export interface Product {
 export interface Sale {
   id?: number;
   receiptNumber: string;
+  subtotalAmount?: number;
+  discountAmount?: number;
   totalAmount: number;
+  totalCost?: number;
+  staffId?: string;
+  staffNameSnapshot?: string;
   saleDate: string;
 }
 
@@ -31,8 +44,21 @@ export interface SaleItem {
   productNameSnapshot: string;
   barcodeSnapshot: string;
   unitPriceSnapshot: number;
+  buyingPriceSnapshot?: number;
   quantity: number;
   subtotal: number;
+}
+
+export interface Expense {
+  id?: number;
+  title: string;
+  amount: number;
+  category: string;
+  note?: string;
+  date: string;
+  staffId?: string;
+  staffNameSnapshot?: string;
+  createdAt: string;
 }
 
 export interface AppSettings {
@@ -44,6 +70,7 @@ export interface AppSettings {
   autoPrint: boolean;
   receiptLanguage: ReceiptLanguage;
   appLanguage: AppLanguage;
+  staffProfiles: StaffProfile[];
 }
 
 export interface CartItem {
@@ -51,6 +78,7 @@ export interface CartItem {
   name: string;
   barcode: string;
   unitPrice: number;
+  buyingPrice?: number;
   quantity: number;
   subtotal: number;
   image?: string;
@@ -64,6 +92,8 @@ export interface SaleWithItems {
 export interface ReceiptData {
   receiptNumber: string;
   saleDate: string;
+  subtotalAmount?: number;
+  discountAmount?: number;
   totalAmount: number;
   items: Array<{
     productName: string;
@@ -83,6 +113,7 @@ export interface DatabaseBackup {
     products: Product[];
     sales: Sale[];
     saleItems: SaleItem[];
+    expenses?: Expense[];
     settings: AppSettings[];
   };
 }

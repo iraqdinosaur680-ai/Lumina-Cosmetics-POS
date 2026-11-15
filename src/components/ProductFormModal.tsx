@@ -34,6 +34,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [name, setName] = useState('');
   const [barcode, setBarcode] = useState('');
   const [price, setPrice] = useState<number | null>(null);
+  const [buyingPrice, setBuyingPrice] = useState<number | null>(null);
+  const [stockText, setStockText] = useState('');
+  const [reorderPointText, setReorderPointText] = useState('');
   const [category, setCategory] = useState('Skincare');
   const [customCategory, setCustomCategory] = useState('');
   const [image, setImage] = useState<string | undefined>(undefined);
@@ -56,6 +59,11 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setName(editingProduct.name);
       setBarcode(editingProduct.barcode);
       setPrice(editingProduct.price);
+      setBuyingPrice(editingProduct.buyingPrice ?? null);
+      setStockText(editingProduct.stock !== undefined ? String(editingProduct.stock) : '');
+      setReorderPointText(
+        editingProduct.reorderPoint !== undefined ? String(editingProduct.reorderPoint) : ''
+      );
       if (allCategories.includes(editingProduct.category)) {
         setCategory(editingProduct.category);
         setCustomCategory('');
@@ -69,6 +77,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setName('');
       setBarcode(initialBarcode);
       setPrice(null);
+      setBuyingPrice(null);
+      setStockText('');
+      setReorderPointText('');
       setCategory('Skincare');
       setCustomCategory('');
       setImage(undefined);
@@ -121,6 +132,13 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       return;
     }
 
+    const parsedStock =
+      stockText.trim() !== '' ? Math.max(0, Math.round(Number(stockText.trim()))) : undefined;
+    const parsedReorderPoint =
+      reorderPointText.trim() !== ''
+        ? Math.max(0, Math.round(Number(reorderPointText.trim())))
+        : undefined;
+
     setSaving(true);
     try {
       await onSave(
@@ -128,6 +146,15 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           name: cleanName,
           barcode: cleanBarcode,
           price: Math.round(price),
+          buyingPrice:
+            buyingPrice !== null && Number.isFinite(buyingPrice) && buyingPrice >= 0
+              ? Math.round(buyingPrice)
+              : undefined,
+          stock: parsedStock !== undefined && Number.isFinite(parsedStock) ? parsedStock : undefined,
+          reorderPoint:
+            parsedReorderPoint !== undefined && Number.isFinite(parsedReorderPoint)
+              ? parsedReorderPoint
+              : undefined,
           category: resolvedCategory,
           image,
         },
@@ -148,8 +175,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       aria-modal="true"
       aria-labelledby="product-modal-title"
     >
-      <div className="bg-white border border-slate-200 rounded-xl shadow-xl w-full max-w-xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
           <h2 id="product-modal-title" className="text-lg font-semibold text-slate-900">
             {editingProduct ? t.products.editModalTitle : t.products.addModalTitle}
           </h2>
@@ -163,66 +190,66 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
           {error && (
             <div className="px-3.5 py-2.5 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
               {error}
             </div>
           )}
 
-          {/* Barcode Input */}
-          <div>
-            <label htmlFor="product-barcode" className="block text-sm font-medium text-slate-700 mb-1.5">
-              {t.products.barcodeLabel} <span className="text-red-600">*</span>
-            </label>
-            <div className="flex gap-2">
-              <input
-                ref={barcodeInputRef}
-                id="product-barcode"
-                dir="ltr"
-                type="text"
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    setBarcode((prev) => normalizeBarcodeInput(prev));
-                    nameInputRef.current?.focus();
-                  }
-                }}
-                placeholder={t.products.barcodePlaceholder}
-                className="flex-1 px-3.5 py-2.5 text-sm font-mono tabular-nums bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
-              />
-              <button
-                type="button"
-                onClick={() => setBarcode(generateInternalBarcode())}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                {t.products.generateBtn}
-              </button>
+          {/* Barcode & Name */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="product-barcode" className="block text-sm font-medium text-slate-700 mb-1.5">
+                {t.products.barcodeLabel} <span className="text-red-600">*</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  ref={barcodeInputRef}
+                  id="product-barcode"
+                  dir="ltr"
+                  type="text"
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      setBarcode((prev) => normalizeBarcodeInput(prev));
+                      nameInputRef.current?.focus();
+                    }
+                  }}
+                  placeholder={t.products.barcodePlaceholder}
+                  className="flex-1 px-3.5 py-2.5 text-sm font-mono tabular-nums bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setBarcode(generateInternalBarcode())}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  {t.products.generateBtn}
+                </button>
+              </div>
             </div>
-            <p className="text-xs text-slate-500 mt-1">{t.products.barcodeHint}</p>
+
+            <div>
+              <label htmlFor="product-name" className="block text-sm font-medium text-slate-700 mb-1.5">
+                {t.products.nameLabel} <span className="text-red-600">*</span>
+              </label>
+              <input
+                ref={nameInputRef}
+                id="product-name"
+                dir="auto"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t.products.namePlaceholder}
+                className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
+              />
+            </div>
           </div>
 
-          {/* Product Name */}
-          <div>
-            <label htmlFor="product-name" className="block text-sm font-medium text-slate-700 mb-1.5">
-              {t.products.nameLabel} <span className="text-red-600">*</span>
-            </label>
-            <input
-              ref={nameInputRef}
-              id="product-name"
-              dir="auto"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t.products.namePlaceholder}
-              className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
-            />
-          </div>
-
-          {/* IQD Smart Price & Category */}
+          {/* Selling Price & Optional Buying Price */}
           <div className="grid grid-cols-2 gap-4 items-start">
             <div>
               <label htmlFor="product-price" className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -241,23 +268,79 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </div>
 
             <div>
-              <label htmlFor="product-category" className="block text-sm font-medium text-slate-700 mb-1.5">
-                {t.products.categoryLabel}
+              <label htmlFor="product-buying-price" className="block text-sm font-medium text-slate-700 mb-1.5">
+                {t.products.buyingPriceLabel}{' '}
+                <span className="text-xs font-normal text-slate-400">({t.common.optional})</span>
               </label>
-              <select
-                id="product-category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
-              >
-                {allCategories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-                <option value="__custom__">{t.products.customCategoryOption}</option>
-              </select>
+              <IqdPriceInput
+                id="product-buying-price"
+                value={buyingPrice}
+                onChange={setBuyingPrice}
+                placeholder="10,000"
+              />
             </div>
+          </div>
+
+          {/* Stock Number & Reorder Point (Optional) */}
+          <div className="grid grid-cols-2 gap-4 items-start">
+            <div>
+              <label htmlFor="product-stock" className="block text-sm font-medium text-slate-700 mb-1.5">
+                {t.products.stockLabel}{' '}
+                <span className="text-xs font-normal text-slate-400">({t.common.optional})</span>
+              </label>
+              <input
+                id="product-stock"
+                dir="ltr"
+                type="number"
+                min={0}
+                step={1}
+                value={stockText}
+                onChange={(e) => setStockText(e.target.value.replace(/[^\d]/g, ''))}
+                placeholder={t.products.stockPlaceholder}
+                className="w-full px-3.5 py-2.5 text-sm font-mono tabular-nums bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="product-reorder-point" className="block text-sm font-medium text-slate-700 mb-1.5">
+                {t.products.reorderPointLabel}{' '}
+                <span className="text-xs font-normal text-slate-400">({t.common.optional})</span>
+              </label>
+              <input
+                id="product-reorder-point"
+                dir="ltr"
+                type="number"
+                min={0}
+                step={1}
+                value={reorderPointText}
+                onChange={(e) => setReorderPointText(e.target.value.replace(/[^\d]/g, ''))}
+                placeholder={t.products.reorderPointPlaceholder}
+                className="w-full px-3.5 py-2.5 text-sm font-mono tabular-nums bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
+              />
+              <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                {t.products.reorderPointHint}
+              </p>
+            </div>
+          </div>
+
+          {/* Category */}
+          <div>
+            <label htmlFor="product-category" className="block text-sm font-medium text-slate-700 mb-1.5">
+              {t.products.categoryLabel}
+            </label>
+            <select
+              id="product-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
+            >
+              {allCategories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+              <option value="__custom__">{t.products.customCategoryOption}</option>
+            </select>
           </div>
 
           {category === '__custom__' && (

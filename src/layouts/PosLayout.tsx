@@ -1,8 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  AlertTriangle,
+  BarChart3,
   History,
   Languages,
+  LogOut,
   Package,
   ScanBarcode,
   Settings as SettingsIcon,
@@ -10,20 +13,26 @@ import {
 } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, DEFAULT_SETTINGS } from '../database/db';
+import { isProductBelowReorderPoint } from '../database/repositories';
 import { usePos } from '../context/PosContext';
 import { useClock } from '../hooks/useClock';
 import { useTranslation } from '../hooks/useTranslation';
+import { interpolate } from '../i18n/translations';
 import { formatReceiptDate, formatTimeWithSeconds } from '../utils/formatters';
 import { PWAInstallButton } from '../components/PWAInstallButton';
 import { OfflineIndicator } from '../components/OfflineIndicator';
 
 export const PosLayout: React.FC = () => {
   const settings = useLiveQuery(() => db.settings.get(1), []) ?? DEFAULT_SETTINGS;
-  const { processScannedBarcode, totalItems } = usePos();
+  const products = useLiveQuery(() => db.products.toArray(), []) ?? [];
+  const { activeStaff, logoutStaff, processScannedBarcode, totalItems } = usePos();
   const { language, t, toggleLanguage } = useTranslation();
   const now = useClock();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const lowStockProducts = products.filter(isProductBelowReorderPoint);
+  const hasOutOfStock = lowStockProducts.some((p) => (p.stock ?? 0) === 0);
 
   const scanBufferRef = useRef('');
   const lastKeyTimeRef = useRef(0);
@@ -33,6 +42,7 @@ export const PosLayout: React.FC = () => {
     { to: '/products', label: t.nav.products, icon: Package, shortcut: 'Alt+2' },
     { to: '/history', label: t.nav.history, icon: History, shortcut: 'Alt+3' },
     { to: '/settings', label: t.nav.settings, icon: SettingsIcon, shortcut: 'Alt+4' },
+    { to: '/statistics', label: t.nav.statistics, icon: BarChart3, shortcut: 'Alt+5' },
   ];
 
   // Global HID barcode listener across the entire app:
@@ -117,6 +127,9 @@ export const PosLayout: React.FC = () => {
       } else if (e.key === '4') {
         e.preventDefault();
         navigate('/settings');
+      } else if (e.key === '5') {
+        e.preventDefault();
+        navigate('/statistics');
       }
     };
     window.addEventListener('keydown', handleShortcuts);
@@ -198,6 +211,26 @@ export const PosLayout: React.FC = () => {
 
         {/* Sidebar Footer */}
         <div className="p-4 border-t border-slate-200 space-y-3">
+          {activeStaff && (
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[10px] text-slate-500">{t.login.activeCashierLabel}</div>
+                <div dir="auto" className="text-xs font-semibold text-slate-900 truncate">
+                  <span className="font-mono text-[#9D174D] me-1">#{activeStaff.id}</span>
+                  {activeStaff.name}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={logoutStaff}
+                className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition-colors shrink-0"
+                title={t.login.switchCashier}
+                aria-label={t.login.switchCashier}
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           <PWAInstallButton />
           <div className="text-xs text-slate-500 space-y-1">
             <div className="flex items-center justify-between">
@@ -230,7 +263,7 @@ export const PosLayout: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-5 shrink-0">
+          <div className="flex items-center gap-4 shrink-0">
             <nav className="hidden xl:flex items-center gap-5 text-xs font-medium text-slate-600">
               {navItems.map((item) => (
                 <NavLink
@@ -247,6 +280,27 @@ export const PosLayout: React.FC = () => {
                 </NavLink>
               ))}
             </nav>
+
+            {location.pathname === '/' && lowStockProducts.length > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate('/products?filter=low-stock')}
+                title={`${t.cashier.lowStockHeaderTitle}: ${lowStockProducts
+                  .slice(0, 4)
+                  .map((p) => p.name)
+                  .join(', ')}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  hasOutOfStock
+                    ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                    : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span className="tabular-nums">
+                  {interpolate(t.cashier.lowStockHeaderBadge, { count: lowStockProducts.length })}
+                </span>
+              </button>
+            )}
 
             <button
               type="button"

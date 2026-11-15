@@ -55,6 +55,7 @@ export const SalesHistoryPage: React.FC = () => {
     const q = searchQuery.trim().toLowerCase();
     const now = Date.now();
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
     return salesWithItems.filter(({ sale, items }) => {
       const saleDateObj = new Date(sale.saleDate);
@@ -63,16 +64,18 @@ export const SalesHistoryPage: React.FC = () => {
       if (datePreset === 'today' && saleKey !== todayKey) return false;
       if (datePreset === 'yesterday' && saleKey !== yesterdayKey) return false;
       if (datePreset === 'week' && now - saleDateObj.getTime() > sevenDaysMs) return false;
+      if (datePreset === 'month' && now - saleDateObj.getTime() > thirtyDaysMs) return false;
       if (datePreset === 'custom' && customDate && saleKey !== customDate) return false;
 
       if (!q) return true;
       const matchesReceipt = sale.receiptNumber.toLowerCase().includes(q);
+      const matchesStaff = (sale.staffNameSnapshot ?? '').toLowerCase().includes(q);
       const matchesItems = items.some(
         (item) =>
           item.productNameSnapshot.toLowerCase().includes(q) ||
           item.barcodeSnapshot.toLowerCase().includes(q)
       );
-      return matchesReceipt || matchesItems;
+      return matchesReceipt || matchesStaff || matchesItems;
     });
   }, [salesWithItems, datePreset, customDate, searchQuery, todayKey, yesterdayKey]);
 
@@ -99,6 +102,8 @@ export const SalesHistoryPage: React.FC = () => {
   const toReceiptData = (entry: SaleWithItems): ReceiptData => ({
     receiptNumber: entry.sale.receiptNumber,
     saleDate: entry.sale.saleDate,
+    subtotalAmount: entry.sale.subtotalAmount,
+    discountAmount: entry.sale.discountAmount,
     totalAmount: entry.sale.totalAmount,
     items: entry.items.map((item) => ({
       productName: item.productNameSnapshot,
@@ -163,6 +168,7 @@ export const SalesHistoryPage: React.FC = () => {
                 { id: 'today', label: t.history.presetToday },
                 { id: 'yesterday', label: t.history.presetYesterday },
                 { id: 'week', label: t.history.presetWeek },
+                { id: 'month', label: t.stats.presetMonth },
                 { id: 'all', label: t.history.presetAll },
                 { id: 'custom', label: t.history.presetCustom },
               ] as Array<{ id: DateFilterPreset; label: string }>
@@ -225,6 +231,7 @@ export const SalesHistoryPage: React.FC = () => {
                 <tr>
                   <th className="py-3 px-5 text-start">{t.history.colReceiptNo}</th>
                   <th className="py-3 px-4 text-start">{t.history.colDateTime}</th>
+                  <th className="py-3 px-4 text-start">{t.history.colSoldBy}</th>
                   <th className="py-3 px-4 text-start">{t.history.colItems}</th>
                   <th className="py-3 px-4 text-end">{t.history.colTotal}</th>
                   <th className="py-3 px-5 text-end">{t.history.colActions}</th>
@@ -249,6 +256,16 @@ export const SalesHistoryPage: React.FC = () => {
                         className="py-3 px-4 font-mono text-xs text-slate-600 tabular-nums whitespace-nowrap text-start"
                       >
                         {formatDateTime(entry.sale.saleDate)}
+                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-700 whitespace-nowrap">
+                        {entry.sale.staffNameSnapshot ? (
+                          <span dir="auto" className="font-medium text-slate-800">
+                            {entry.sale.staffId ? `#${entry.sale.staffId} · ` : ''}
+                            {entry.sale.staffNameSnapshot}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-slate-600">
                         <div className="flex items-center gap-2 min-w-0">
@@ -314,9 +331,21 @@ export const SalesHistoryPage: React.FC = () => {
                 <h2 id="sale-detail-title" className="text-base font-semibold text-slate-900 font-mono">
                   {t.history.receiptTitlePrefix} #{selectedSale.sale.receiptNumber}
                 </h2>
-                <p dir="ltr" className="text-xs text-slate-500 mt-0.5 font-mono tabular-nums text-start">
-                  {formatDateTime(selectedSale.sale.saleDate)}
-                </p>
+                <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                  <span dir="ltr" className="font-mono tabular-nums">
+                    {formatDateTime(selectedSale.sale.saleDate)}
+                  </span>
+                  {selectedSale.sale.staffNameSnapshot && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span dir="auto" className="font-medium text-slate-700">
+                        {t.history.colSoldBy}:{' '}
+                        {selectedSale.sale.staffId ? `#${selectedSale.sale.staffId} ` : ''}
+                        {selectedSale.sale.staffNameSnapshot}
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
               <button
                 type="button"
@@ -368,11 +397,21 @@ export const SalesHistoryPage: React.FC = () => {
             </div>
 
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between rounded-b-xl">
-              <div>
-                <span className="text-xs text-slate-500">{t.history.totalAmount}</span>
-                <div dir="ltr" className="text-lg font-bold font-mono tabular-nums text-slate-900">
-                  {formatCurrency(selectedSale.sale.totalAmount, settings.currency)}
+              <div className="flex items-center gap-6">
+                <div>
+                  <span className="text-xs text-slate-500">{t.history.totalAmount}</span>
+                  <div dir="ltr" className="text-lg font-bold font-mono tabular-nums text-slate-900">
+                    {formatCurrency(selectedSale.sale.totalAmount, settings.currency)}
+                  </div>
                 </div>
+                {(selectedSale.sale.discountAmount ?? 0) > 0 && (
+                  <div>
+                    <span className="text-xs text-emerald-700">{t.history.discountApplied}</span>
+                    <div dir="ltr" className="text-sm font-semibold font-mono tabular-nums text-emerald-700">
+                      -{formatCurrency(selectedSale.sale.discountAmount ?? 0, settings.currency)}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <button

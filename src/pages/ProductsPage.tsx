@@ -1,8 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Package, Pencil, Plus, Search, Sparkles, Trash2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { AlertTriangle, Package, Pencil, Plus, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, DEFAULT_SETTINGS } from '../database/db';
-import { productRepo } from '../database/repositories';
+import {
+  getEffectiveReorderPoint,
+  isProductBelowReorderPoint,
+  productRepo,
+} from '../database/repositories';
 import { usePos } from '../context/PosContext';
 import { useTranslation } from '../hooks/useTranslation';
 import { interpolate } from '../i18n/translations';
@@ -17,12 +22,33 @@ export const ProductsPage: React.FC = () => {
   const { addProductToCart, setFeedback } = usePos();
   const { t } = useTranslation();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const lowStockOnly = searchParams.get('filter') === 'low-stock';
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  const lowStockProducts = useMemo(
+    () =>
+      products
+        .filter(isProductBelowReorderPoint)
+        .sort((a, b) => (a.stock ?? 0) - (b.stock ?? 0)),
+    [products]
+  );
+
+  const setLowStockFilter = (enabled: boolean) => {
+    const next = new URLSearchParams(searchParams);
+    if (enabled) {
+      next.set('filter', 'low-stock');
+    } else {
+      next.delete('filter');
+    }
+    setSearchParams(next, { replace: true });
+  };
 
   const categories = useMemo(() => {
     const unique = Array.from(new Set(products.map((p) => p.category))).sort();
@@ -37,6 +63,7 @@ export const ProductsPage: React.FC = () => {
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return products.filter((p) => {
+      if (lowStockOnly && !isProductBelowReorderPoint(p)) return false;
       const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
       if (!matchesCategory) return false;
       if (!q) return true;
@@ -46,7 +73,7 @@ export const ProductsPage: React.FC = () => {
         p.category.toLowerCase().includes(q)
       );
     });
-  }, [products, searchQuery, selectedCategory]);
+  }, [products, searchQuery, selectedCategory, lowStockOnly]);
 
   const handleSave = async (
     data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>,
@@ -138,6 +165,53 @@ export const ProductsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Low Stock / Reorder Point Alert Banner */}
+      {lowStockProducts.length > 0 && (
+        <div
+          role="status"
+          className={`px-4 py-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${
+            lowStockProducts.some((p) => (p.stock ?? 0) === 0)
+              ? 'bg-red-50 border-red-200 text-red-900'
+              : 'bg-amber-50 border-amber-200 text-amber-900'
+          }`}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <AlertTriangle
+              className={`w-4 h-4 shrink-0 ${
+                lowStockProducts.some((p) => (p.stock ?? 0) === 0)
+                  ? 'text-red-600'
+                  : 'text-amber-600'
+              }`}
+            />
+            <div className="text-xs min-w-0">
+              <span className="font-semibold">
+                {interpolate(t.products.lowStockAlertTitle, { count: lowStockProducts.length })}
+              </span>
+              <span className="mx-2 opacity-50" aria-hidden="true">
+                ·
+              </span>
+              <span className="opacity-90 truncate">
+                {lowStockProducts
+                  .slice(0, 4)
+                  .map(
+                    (p) => `${p.name} (${p.stock ?? 0}/${getEffectiveReorderPoint(p)})`
+                  )
+                  .join(', ')}
+                {lowStockProducts.length > 4 ? ` (+${lowStockProducts.length - 4})` : ''}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setLowStockFilter(!lowStockOnly)}
+            className="px-3 py-1.5 text-xs font-semibold bg-white border border-current/20 rounded-lg hover:bg-white/80 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            {lowStockOnly ? t.products.lowStockAlertAllBtn : t.products.lowStockAlertFilterBtn}
+          </button>
+        </div>
+      )}
+
       {statusMessage && (
         <div className="px-4 py-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-sm text-emerald-900 flex items-center justify-between">
           <span>{statusMessage}</span>
@@ -168,6 +242,22 @@ export const ProductsPage: React.FC = () => {
               {cat === 'All' ? t.common.all : cat}
             </button>
           ))}
+          {lowStockProducts.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setLowStockFilter(!lowStockOnly)}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                lowStockOnly
+                  ? 'bg-amber-600 text-white border-amber-600'
+                  : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span className="tabular-nums">
+                {interpolate(t.products.lowStockFilterBtn, { count: lowStockProducts.length })}
+              </span>
+            </button>
+          )}
         </div>
 
         {filteredProducts.length > 0 && (
@@ -211,12 +301,23 @@ export const ProductsPage: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {filteredProducts.map((product) => (
+          {filteredProducts.map((product) => {
+            const isBelowReorder = isProductBelowReorderPoint(product);
+            const isOutOfStock = product.stock !== undefined && product.stock === 0;
+            const threshold = getEffectiveReorderPoint(product);
+
+            return (
             <div
               key={product.id ?? product.barcode}
-              className="group relative aspect-square bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden hover:border-[#9D174D]/50 hover:shadow-md transition-all"
+              className={`group relative aspect-square bg-white border rounded-xl shadow-xs overflow-hidden hover:border-[#9D174D]/50 hover:shadow-md transition-all ${
+                isOutOfStock
+                  ? 'border-red-300'
+                  : isBelowReorder
+                    ? 'border-amber-300'
+                    : 'border-slate-200'
+              }`}
             >
-              {/* Primary Card Click Surface -> Adds directly to Cashier & navigates */}
+              {/* Primary Card Click Surface -> Adds directly to Cashier (never restricted by stock) */}
               <button
                 type="button"
                 onClick={() => handleSelectProductToCashier(product)}
@@ -243,7 +344,29 @@ export const ProductsPage: React.FC = () => {
 
                 {/* Bottom Product Details (~44% of square height) */}
                 <div className="w-full p-3.5 flex flex-col justify-between gap-1.5 shrink-0 bg-white">
-                  <div className="text-[11px] text-slate-500 truncate">{product.category}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-500 truncate">{product.category}</span>
+                    {product.stock !== undefined && (
+                      <span
+                        className={`inline-flex items-center gap-1 text-[11px] font-mono tabular-nums whitespace-nowrap shrink-0 font-semibold ${
+                          isOutOfStock
+                            ? 'text-red-600'
+                            : isBelowReorder
+                              ? 'text-amber-700'
+                              : 'text-slate-500 font-medium'
+                        }`}
+                      >
+                        {isBelowReorder && <AlertTriangle className="w-3 h-3 shrink-0" />}
+                        <span>
+                          {isOutOfStock
+                            ? t.products.outOfStockBadge
+                            : isBelowReorder
+                              ? `${t.products.lowStockBadge}: ${product.stock}/${threshold}`
+                              : `${t.products.stockBadge}: ${product.stock}`}
+                        </span>
+                      </span>
+                    )}
+                  </div>
                   <div
                     dir="auto"
                     className="text-sm font-semibold text-slate-900 leading-snug line-clamp-2 min-h-[2.4rem]"
@@ -294,7 +417,8 @@ export const ProductsPage: React.FC = () => {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -10,6 +10,7 @@ import type {
   ReceiptData,
   ReceiptLanguage,
   ReceiptWidth,
+  StaffProfile,
 } from '../types/pos';
 import { ReceiptPreview } from '../components/ReceiptPreview';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -31,6 +32,9 @@ export const SettingsPage: React.FC = () => {
   );
   const [receiptFooter, setReceiptFooter] = useState(currentSettings.receiptFooter);
   const [autoPrint, setAutoPrint] = useState(currentSettings.autoPrint);
+  const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>(
+    currentSettings.staffProfiles ?? DEFAULT_SETTINGS.staffProfiles
+  );
 
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -47,13 +51,24 @@ export const SettingsPage: React.FC = () => {
     setAppLanguage(currentSettings.appLanguage ?? 'en');
     setReceiptFooter(currentSettings.receiptFooter);
     setAutoPrint(currentSettings.autoPrint);
+    setStaffProfiles(currentSettings.staffProfiles ?? DEFAULT_SETTINGS.staffProfiles);
   }, [currentSettings]);
+
+  const handleStaffNameChange = (id: '1' | '2' | '3', nextName: string) => {
+    setStaffProfiles((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, name: nextName } : p))
+    );
+  };
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setFeedback(null);
     try {
+      const normalizedProfiles = staffProfiles.map((p) => ({
+        ...p,
+        name: p.name.trim() || `Cashier ${p.id}`,
+      }));
       await settingsRepo.updateSettings({
         shopName,
         currency,
@@ -62,6 +77,7 @@ export const SettingsPage: React.FC = () => {
         appLanguage,
         receiptFooter,
         autoPrint,
+        staffProfiles: normalizedProfiles,
       });
       setFeedback({ type: 'success', text: t.settings.savedToast });
     } catch (err) {
@@ -166,6 +182,7 @@ export const SettingsPage: React.FC = () => {
       appLanguage,
       receiptFooter,
       autoPrint,
+      staffProfiles,
     },
   };
 
@@ -311,6 +328,36 @@ export const SettingsPage: React.FC = () => {
                 placeholder="THANK YOU!"
                 className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
               />
+            </div>
+
+            {/* 3-Choice Cashier Profiles */}
+            <div className="pt-4 border-t border-slate-200 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  {t.settings.staffSectionTitle}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">{t.settings.staffSectionSubtitle}</p>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {staffProfiles.map((profile) => (
+                  <div key={profile.id}>
+                    <label
+                      htmlFor={`settings-staff-${profile.id}`}
+                      className="block text-xs font-medium text-slate-600 mb-1"
+                    >
+                      {t.settings.staffChoiceLabel} #{profile.id}
+                    </label>
+                    <input
+                      id={`settings-staff-${profile.id}`}
+                      dir="auto"
+                      type="text"
+                      value={profile.name}
+                      onChange={(e) => handleStaffNameChange(profile.id, e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9D174D]/20 focus:border-[#9D174D]"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="flex items-center justify-between pt-2">
